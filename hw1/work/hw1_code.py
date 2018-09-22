@@ -11,7 +11,7 @@ import time # kill this
 import numpy as np
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.model_selection import train_test_split
-
+from sklearn.tree import DecisionTreeClassifier
 
 # Constants: file names
 CLEAN_REAL = "clean_real.txt"
@@ -20,24 +20,45 @@ CLEAN_FAKE = "clean_fake.txt"
 def load_data():
 	f = open(CLEAN_REAL, "r")
 	real_headlines = f.read().splitlines()
-	print(real_headlines[0])
-	print(real_headlines[1])
-	print(real_headlines[2])
-	time.sleep(100)
+	f.close()
+	print("real_headlines[0]: {}".format(real_headlines[0]))
+
+	f = open(CLEAN_FAKE, "r")
+	fake_headlines = f.read().splitlines()
+	f.close()
+	print("fake_headlines[0]: {}".format(fake_headlines[0]))
+
+	count_real = len(real_headlines)
+	count_fake = len(fake_headlines)
+	count_total = count_real + count_fake
+
+	print("count_real: {} | count_fake: {}".format(count_real, count_fake))
+
+	all_headlines_temp = real_headlines + fake_headlines
+	all_headlines = np.asarray(all_headlines_temp)
+
 	vectorizer = CountVectorizer()
-	real_X = vectorizer.fit_transform(real_headlines)
-	real_y = np.full((len(real_X), 1), 1) # real headlines get label of 1
+	X = vectorizer.fit_transform(all_headlines)
+	print("X.shape: {}".format(X.shape))
 
-	real_headlines = np.genfromtxt(CLEAN_FAKE, delimiter='\n')
-	fake_X = vectorizer.fit_transform(fake_headlines)
-	fake_y = np.full((len(real_X), 1), 1) # fake headlines get label of 0
+	# Make labels
+	real_y = np.full((count_real, 1), 1) # real headlines get label of 1
+	fake_y = np.full((count_fake, 1), 0) # fake headlines get label of 0
+	all_y = np.append(real_y, fake_y)
 
-	# Join real and fake headlines into a single set
-	X = real_X + fake_X
-	y = real_y + fake_y
-
-	print("real_X[0]: {} | real_y[0]".format(real_X[0], real_y[0]))
+	# Append original headline text so we can refer to it later
+	print(all_headlines.shape)
+	print(all_y.shape)
+	a = all_headlines.reshape(1, count_total)
+	b = all_y.reshape(1, count_total)
+	y = np.concatenate((a, b), axis=0).T
+	print("y.shape: {}".format(y.shape))
+	# print(y[: ,0]) # text
+	# print(y[: ,1]) # labels
 	
+	# check we're correct
+	print("{} | {}".format(X[count_real-1].toarray(), y[count_real-1]))
+	print("{} | {}".format(X[count_real].toarray(), y[count_real]))
 
 	# 70 / 30 split
 	X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.3, random_state=1)
@@ -51,14 +72,27 @@ def load_data():
 	print(X_test.shape)
 	print(y_test.shape)
 
+	return X_train, X_val, X_test, y_train, y_val, y_test
+
 def select_model():
-	return 0
+	clf = DecisionTreeClassifier()
+	clf.fit(X=X_train, y=y_train[:, 1]) # train on labels only
+
+	# test on validation set
+	y_pred = clf.predict(X=X_val)
+	correct = sum(i == j for i, j in zip(y_pred, y_val[:, 1]))
+	print(correct / y_val.shape[0])
+	
+	# Same definition as clf.score
+	# print(clf.score(X=X_val, y=y_val[:, 1])) 
 
 def compute_information_gain():
 	return 0
 
 def main():
-	load_data()
+	X_train, X_val, X_test, y_train, y_val, y_test = load_data()
+
+	
 
 
 if __name__ == "__main__":
