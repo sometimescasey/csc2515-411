@@ -8,9 +8,11 @@ with warnings.catch_warnings():
 	from collections import Mapping, defaultdict 
 
 import numpy as np
+import math
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier, export_graphviz
+from sklearn.model_selection import ShuffleSplit
 
 from subprocess import call
 
@@ -20,6 +22,10 @@ CLEAN_FAKE = "clean_fake.txt"
 
 # Valid sklearn.DecisionTreeClassifier 'criterion' values
 CRITERIA = ['gini', 'entropy']
+
+# Class labels
+REAL_LABEL = 'R'
+FAKE_LABEL = 'F'
 
 def load_data():
 	f = open(CLEAN_REAL, "r")
@@ -41,8 +47,8 @@ def load_data():
 	X = vectorizer.fit_transform(all_headlines)
 
 	# Make labels
-	real_labels = np.full((count_real, 1), 'R')
-	fake_labels = np.full((count_fake, 1), 'F')
+	real_labels = np.full((count_real, 1), REAL_LABEL)
+	fake_labels = np.full((count_fake, 1), FAKE_LABEL)
 	all_labels = np.append(real_labels, fake_labels)
 
 	# Append original headline text so we can refer to it later
@@ -53,10 +59,12 @@ def load_data():
 	# print(y[: ,1]) # labels
 
 	# 70 / 30 split
-	X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.3, random_state=1)
+	X_train, X_temp, y_train, y_temp = custom_train_test_split(X, y, 
+		test_size=0.3, random_state=1)
 
 	# split 30 into 15 val, 15 test
-	X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.3, random_state=1)
+	X_val, X_test, y_val, y_test = custom_train_test_split(X_temp, y_temp, 
+		test_size=0.5, random_state=1)
 
 	return X_train, X_val, X_test, y_train, y_val, y_test, count_total, vectorizer
 
@@ -70,9 +78,7 @@ def select_model(X_train, y_train, X_val, y_val, max_depth=5):
 		score, clf = test_settings(setting, X_train, y_train, X_val, y_val)
 		if (score > best_score):
 			best_score = score
-			best_index = settings.index(setting)
 			best_tree = clf
-			print("new best: " + clf.criterion)
 
 	print("---\nBest hyperparameters: max_depth = {}, criterion = {}, score = {:.4f}"
 		.format(
@@ -80,7 +86,6 @@ def select_model(X_train, y_train, X_val, y_val, max_depth=5):
 			best_tree.criterion,
 			best_score))
 
-	print("about to return: " + best_tree.criterion)
 	return best_tree
 	
 def generate_settings(max_depth):
@@ -96,7 +101,8 @@ def generate_settings(max_depth):
 def test_settings(setting, X_train, y_train, X_val, y_val):
 	clf = DecisionTreeClassifier(
 		max_depth=setting["max_depth"], 
-		criterion=setting["criterion"])
+		criterion=setting["criterion"],
+		splitter="random",)
 	clf.fit(X=X_train, y=y_train[:, 1]) # train on labels only
 
 	# test on validation set
@@ -108,28 +114,99 @@ def test_settings(setting, X_train, y_train, X_val, y_val):
 		setting["criterion"].ljust(7),
 		score))
 
-	# Same score behaviour as clf.score
+	# Same score behaviour as clf.score, but cannot use per assn. instructions
 	# print(clf.score(X=X_val, y=y_val[:, 1]))
-	print(clf.criterion)
+
 	return score, clf
 
-def compute_information_gain():
-	# TODO
-	return 0
+def compute_information_gain(X_train, y_train, vectorizer, threshold, keyword):
+	# Split training set based on keyword and <= Tfidf threshold, calculate IG
+	# i.e. tree visualization shows "trump <= 0.035" in first node
+	# keyword = "donald"
+	# threshold = 0.035
+
+	feature_names = vectorizer.vocabulary_
+	index = feature_names[keyword]
+	# TODO: error check in case key word is not valid
+	column = X_train[:,index]
+	over_threshold = (column > threshold) # why not 'column <= threshold'? SparseEfficiencyWarning
+	over_indices = np.nonzero(over_threshold)[0]
+	under_indices = np.array([i for i in range(X_train.shape[0]) if i not in over_indices]) # complement
+	
+	l_child = y_train[: ,1][under_indices]
+	r_child = y_train[: ,1][over_indices]
+
+	print("l_child: {} | r_child: {}"
+		.format(l_child.shape[0], r_child.shape[0]))
+	
+	#Parent
+	p_n = y_train[: ,1].shape[0]
+	p_r = np.count_nonzero(y_train[: ,1] == REAL_LABEL)
+	p_f = np.count_nonzero(y_train[: ,1] == FAKE_LABEL)
+
+	# Left child
+	l_n = l_child.shape[0]
+	l_r = np.count_nonzero(l_child == REAL_LABEL)
+	l_f = np.count_nonzero(l_child == FAKE_LABEL)
+
+	# Right child
+	r_n = r_child.shape[0]
+	r_r = np.count_nonzero(r_child == REAL_LABEL)
+	r_f = np.count_nonzero(r_child == FAKE_LABEL)
+
+	# quick check that numbers add up, otherwise something is wrong
+	assert (p_r + p_f == p_n), \
+	"Parent classes do not sum to total: {}:{}, {}:{}, total:{}" \
+	.format(
+		REAL_LABEL,p_r,
+		FAKE_LABEL,p_f,
+		p_n)
+	assert (l_r + l_f == l_n), \
+	"Left child classes do not sum to total: {}:{}, {}:{}, total:{}" \
+	.format(
+		REAL_LABEL,l_r,
+		FAKE_LABEL,l_f,
+		l_n)
+	assert (r_r + r_f == r_n), \
+	"Right child classes do not sum to total: {}:{}, {}:{}, total:{}" \
+	.format(
+		REAL_LABEL,r_r,
+		FAKE_LABEL,r_f,
+		r_n)
+
+	p_h = entropy(p_r, p_f)
+	l_h = entropy(l_r, l_f)
+	r_h = entropy(r_r, r_f)
+
+	ig = p_h - (l_n/p_n*l_h + r_n/p_n*r_h)
+
+	return ig
+
+def entropy(x1, x2):
+	# Within a node, define x1 and x2 as the number of items in each category
+	x_n = x1+x2
+	x_H = -(x1/x_n)*math.log((x1/x_n), 2) + -(x2/x_n)*math.log((x2/x_n), 2)
+	return x_H 
+
+def custom_train_test_split(X, y, test_size, random_state):
+	# my own implementation of train_test_split, per Piazza @131
+	rs = ShuffleSplit(n_splits=1, test_size=test_size, 
+		random_state=random_state)
+	split = rs.split(X, y)
+	
+	for train_indices, test_indices in split:
+		X_train = X[train_indices]
+		X_test = X[test_indices]
+		y_train = y[train_indices]
+		y_test = y[test_indices]
+
+	return X_train, X_test, y_train, y_test
 
 def predict_sentence(string):
 	# TODO: predict for any random headline we grab off the internet
 	return 0
 
-def main():
-	X_train, X_val, X_test, y_train, y_val, y_test, count_total, vectorizer = load_data()
-	clf = select_model(X_train, y_train, X_val, y_val, 20)
-
-	show_gini = (clf.criterion == 'gini')
-	print(show_gini)
-
-	print(clf.criterion)
-
+def visualize(clf, vectorizer):
 	export_graphviz(clf, 
 		max_depth=2, 
 		out_file="tree.dot",
@@ -140,6 +217,23 @@ def main():
 	# Generate .png
 	call(["dot", "-Tpng", "tree.dot", "-o tree.png"])
 
+def main():
+	X_train, X_val, X_test, y_train, y_val, y_test, count_total, vectorizer = load_data()
+	# quick length checks
+	# print("total: {} | X_train: {} | X_val: {} | X_test: {} | y_train: {} | y_val: {} | y_test: {}".format(
+	# 	count_total,
+	# 	X_train.shape[0],
+	# 	X_val.shape[0],
+	# 	X_test.shape[0],
+	# 	y_train.shape[0],
+	# 	y_val.shape[0],
+	# 	y_test.shape[0],))
+	clf = select_model(X_train, y_train, X_val, y_val, 10)
+
+	visualize(clf, vectorizer)
+
+	ig = compute_information_gain(X_train, y_train, vectorizer, 0.035, "trump")
+	print(ig)
 
 if __name__ == "__main__":
 	main()
