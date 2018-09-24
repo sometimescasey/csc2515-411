@@ -1,6 +1,5 @@
 import warnings
 
-# conda installed sklearn 0.19.2
 # https://github.com/scikit-learn/scikit-learn/pull/11431/files 
 # Suppress warning for now, manually upgrade to 0.21 later
 with warnings.catch_warnings():
@@ -9,13 +8,14 @@ with warnings.catch_warnings():
 
 import numpy as np
 import math
+from subprocess import call
+
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier, export_graphviz
 from sklearn.model_selection import ShuffleSplit
 
-from subprocess import call
 
+MAX_DEPTH = 20
 
 CLEAN_REAL = "clean_real.txt"
 CLEAN_FAKE = "clean_fake.txt"
@@ -26,6 +26,13 @@ CRITERIA = ['gini', 'entropy']
 # Class labels
 REAL_LABEL = 'R'
 FAKE_LABEL = 'F'
+
+# For question 2d): list of splits to try
+TRY_WORDS = [
+	{ "keyword": "trump", "threshold": 0.035},
+	{ "keyword": "donald", "threshold": 0.071 },
+	{ "keyword": "hillary", "threshold": 0.045 },
+]
 
 def load_data():
 	f = open(CLEAN_REAL, "r")
@@ -68,7 +75,7 @@ def load_data():
 
 	return X_train, X_val, X_test, y_train, y_val, y_test, count_total, vectorizer
 
-def select_model(X_train, y_train, X_val, y_val, max_depth=5):
+def select_model(X_train, y_train, X_val, y_val, max_depth):
 	best_index = -1
 	best_score = -1
 	best_tree = None
@@ -114,32 +121,31 @@ def test_settings(setting, X_train, y_train, X_val, y_val):
 		setting["criterion"].ljust(7),
 		score))
 
-	# Same score behaviour as clf.score, but cannot use per assn. instructions
-	# print(clf.score(X=X_val, y=y_val[:, 1]))
-
 	return score, clf
 
-def compute_information_gain(X_train, y_train, vectorizer, threshold, keyword):
+def compute_information_gain(X_train, y_train, vectorizer, keyword, threshold):
 	# Split training set based on keyword and <= Tfidf threshold, calculate IG
-	# i.e. tree visualization shows "trump <= 0.035" in first node
+	# i.e. if tree visualization shows "trump <= 0.035" in first node:
 	# keyword = "donald"
 	# threshold = 0.035
 
 	feature_names = vectorizer.vocabulary_
-	index = feature_names[keyword]
-	# TODO: error check in case key word is not valid
+	if keyword in feature_names:
+		index = feature_names[keyword]
+	else:
+		print("Cannot calculate IG: Keyword '{}' not found. ".format(keyword))
+		return None
+
 	column = X_train[:,index]
-	over_threshold = (column > threshold) # why not 'column <= threshold'? SparseEfficiencyWarning
+	# why not 'column <= threshold'? SparseEfficiencyWarning
+	over_threshold = (column > threshold) 
 	over_indices = np.nonzero(over_threshold)[0]
 	under_indices = np.array([i for i in range(X_train.shape[0]) if i not in over_indices]) # complement
 	
 	l_child = y_train[: ,1][under_indices]
 	r_child = y_train[: ,1][over_indices]
-
-	print("l_child: {} | r_child: {}"
-		.format(l_child.shape[0], r_child.shape[0]))
 	
-	#Parent
+	# Parent
 	p_n = y_train[: ,1].shape[0]
 	p_r = np.count_nonzero(y_train[: ,1] == REAL_LABEL)
 	p_f = np.count_nonzero(y_train[: ,1] == FAKE_LABEL)
@@ -154,7 +160,7 @@ def compute_information_gain(X_train, y_train, vectorizer, threshold, keyword):
 	r_r = np.count_nonzero(r_child == REAL_LABEL)
 	r_f = np.count_nonzero(r_child == FAKE_LABEL)
 
-	# quick check that numbers add up, otherwise something is wrong
+	# Check that numbers add up, otherwise something is wrong
 	assert (p_r + p_f == p_n), \
 	"Parent classes do not sum to total: {}:{}, {}:{}, total:{}" \
 	.format(
@@ -178,7 +184,7 @@ def compute_information_gain(X_train, y_train, vectorizer, threshold, keyword):
 	l_h = entropy(l_r, l_f)
 	r_h = entropy(r_r, r_f)
 
-	ig = p_h - (l_n/p_n*l_h + r_n/p_n*r_h)
+	ig = p_h - (l_n/p_n * l_h + r_n/p_n * r_h)
 
 	return ig
 
@@ -202,10 +208,6 @@ def custom_train_test_split(X, y, test_size, random_state):
 
 	return X_train, X_test, y_train, y_test
 
-def predict_sentence(string):
-	# TODO: predict for any random headline we grab off the internet
-	return 0
-
 def visualize(clf, vectorizer):
 	export_graphviz(clf, 
 		max_depth=2, 
@@ -217,23 +219,25 @@ def visualize(clf, vectorizer):
 	# Generate .png
 	call(["dot", "-Tpng", "tree.dot", "-o tree.png"])
 
+def question_2d(TRY_WORDS, X_train, y_train, vectorizer):
+	print("---")
+	print("{} | {} | {}"
+			.format("KEYWORD".ljust(10), "Tfidf THRESHOLD", "IG"))
+	for word in TRY_WORDS:
+		ig = compute_information_gain(X_train, y_train, vectorizer, 
+			word['keyword'], word['threshold'])
+		if (ig):
+			print("{} | {} | {:.4f}"
+			.format(word['keyword'].ljust(10), str(word['threshold']).ljust(15), ig))
+
 def main():
 	X_train, X_val, X_test, y_train, y_val, y_test, count_total, vectorizer = load_data()
-	# quick length checks
-	# print("total: {} | X_train: {} | X_val: {} | X_test: {} | y_train: {} | y_val: {} | y_test: {}".format(
-	# 	count_total,
-	# 	X_train.shape[0],
-	# 	X_val.shape[0],
-	# 	X_test.shape[0],
-	# 	y_train.shape[0],
-	# 	y_val.shape[0],
-	# 	y_test.shape[0],))
-	clf = select_model(X_train, y_train, X_val, y_val, 10)
-
+	
+	clf = select_model(X_train, y_train, X_val, y_val, MAX_DEPTH)
+	
 	visualize(clf, vectorizer)
-
-	ig = compute_information_gain(X_train, y_train, vectorizer, 0.035, "trump")
-	print(ig)
+	
+	question_2d(TRY_WORDS, X_train, y_train, vectorizer)
 
 if __name__ == "__main__":
 	main()
