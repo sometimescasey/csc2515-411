@@ -10,7 +10,9 @@ with warnings.catch_warnings():
 import numpy as np
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.model_selection import train_test_split
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeClassifier, export_graphviz
+
+from subprocess import call
 
 
 CLEAN_REAL = "clean_real.txt"
@@ -56,24 +58,30 @@ def load_data():
 	# split 30 into 15 val, 15 test
 	X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.3, random_state=1)
 
-	return X_train, X_val, X_test, y_train, y_val, y_test
+	return X_train, X_val, X_test, y_train, y_val, y_test, count_total, vectorizer
 
 def select_model(X_train, y_train, X_val, y_val, max_depth=5):
 	best_index = -1
 	best_score = -1
+	best_tree = None
 
 	settings = generate_settings(max_depth)
 	for setting in settings:
-		score = test_settings(setting, X_train, y_train, X_val, y_val)
+		score, clf = test_settings(setting, X_train, y_train, X_val, y_val)
 		if (score > best_score):
 			best_score = score
 			best_index = settings.index(setting)
+			best_tree = clf
+			print("new best: " + clf.criterion)
 
 	print("---\nBest hyperparameters: max_depth = {}, criterion = {}, score = {:.4f}"
 		.format(
-			settings[best_index]["max_depth"],
-			settings[best_index]["criterion"],
+			best_tree.max_depth,
+			best_tree.criterion,
 			best_score))
+
+	print("about to return: " + best_tree.criterion)
+	return best_tree
 	
 def generate_settings(max_depth):
 	list = []
@@ -102,14 +110,35 @@ def test_settings(setting, X_train, y_train, X_val, y_val):
 
 	# Same score behaviour as clf.score
 	# print(clf.score(X=X_val, y=y_val[:, 1]))
-	return score
+	print(clf.criterion)
+	return score, clf
 
 def compute_information_gain():
+	# TODO
+	return 0
+
+def predict_sentence(string):
+	# TODO: predict for any random headline we grab off the internet
 	return 0
 
 def main():
-	X_train, X_val, X_test, y_train, y_val, y_test = load_data()
-	select_model(X_train, y_train, X_val, y_val, 20)
+	X_train, X_val, X_test, y_train, y_val, y_test, count_total, vectorizer = load_data()
+	clf = select_model(X_train, y_train, X_val, y_val, 20)
+
+	show_gini = (clf.criterion == 'gini')
+	print(show_gini)
+
+	print(clf.criterion)
+
+	export_graphviz(clf, 
+		max_depth=2, 
+		out_file="tree.dot",
+		feature_names = vectorizer.get_feature_names(),
+		class_names = clf.classes_,
+		)
+
+	# Generate .png
+	call(["dot", "-Tpng", "tree.dot", "-o tree.png"])
 
 
 if __name__ == "__main__":
