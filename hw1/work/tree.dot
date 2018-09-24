@@ -1,0 +1,28 @@
+digraph Tree {
+node [shape=box] ;
+0 [label="donald <= 0.109\nentropy = 0.973\nsamples = 2286\nvalue = [923, 1363]\nclass = R"] ;
+1 [label="you <= 0.008\nentropy = 1.0\nsamples = 1677\nvalue = [853, 824]\nclass = F"] ;
+0 -> 1 [labeldistance=2.5, labelangle=45, headlabel="True"] ;
+2 [label="us <= 0.181\nentropy = 1.0\nsamples = 1638\nvalue = [816, 822]\nclass = R"] ;
+1 -> 2 ;
+3 [label="(...)"] ;
+2 -> 3 ;
+146 [label="(...)"] ;
+2 -> 146 ;
+169 [label="happens <= 0.109\nentropy = 0.292\nsamples = 39\nvalue = [37, 2]\nclass = F"] ;
+1 -> 169 ;
+170 [label="(...)"] ;
+169 -> 170 ;
+173 [label="(...)"] ;
+169 -> 173 ;
+174 [label="walk <= 0.31\nentropy = 0.515\nsamples = 609\nvalue = [70, 539]\nclass = R"] ;
+0 -> 174 [labeldistance=2.5, labelangle=-45, headlabel="False"] ;
+175 [label="victory <= 0.208\nentropy = 0.493\nsamples = 604\nvalue = [65, 539]\nclass = R"] ;
+174 -> 175 ;
+176 [label="(...)"] ;
+175 -> 176 ;
+263 [label="(...)"] ;
+175 -> 263 ;
+268 [label="entropy = 0.0\nsamples = 5\nvalue = [5, 0]\nclass = F"] ;
+174 -> 268 ;
+}
