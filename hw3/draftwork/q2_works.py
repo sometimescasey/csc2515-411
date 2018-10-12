@@ -159,6 +159,9 @@ def run_validation(x,y,taus,frac_val):
       for i in range(0, x_val.shape[0]):
         y_val_pred.append(LRLS(x_val[i], x_train, y_train, tau, lam=1e-5))
 
+      # v_sq_err_loss = np.vectorize(squared_error_loss)
+      # train_mse = np.average(((y_train_pred - y_train)**2) * 0.5)
+      # val_mse = np.average(((y_val_pred - y_val)**2) * 0.5)
       train_mse = 0.5 * mean_squared_error(y_train_pred, y_train)
       val_mse = 0.5 * mean_squared_error(y_val_pred, y_val)
       train_losses.append(train_mse)
@@ -166,26 +169,74 @@ def run_validation(x,y,taus,frac_val):
     
     return train_losses, test_losses
 
+def run_validation2(x,y,taus,frac_val, random_state):
+    '''
+    Input: x is the N x d design matrix
+           y is the N x 1 targets vector    
+           taus is a vector of tau values to evaluate
+           val_frac is the fraction of examples to use as validation data
+    output is
+           a vector of training losses, one for each tau value
+           a vector of validation losses, one for each tau value
+    '''
+    x_train, x_val, y_train, y_val = custom_train_test_split(x, y, frac_val, random_state)
+
+    train_losses = []
+    test_losses = []    
+    
+    for tau in taus:
+
+      # not vectorized - how can this be done?
+      print("tau: {}".format(tau))
+      y_train_pred = []
+      for i in range(0, x_train.shape[0]):
+        y_train_pred.append(LRLS(x_train[i], x_train, y_train, tau, lam=1e-5))
+
+      y_val_pred = []
+      for i in range(0, x_val.shape[0]):
+        y_val_pred.append(LRLS(x_val[i], x_train, y_train, tau, lam=1e-5))
+
+      # v_sq_err_loss = np.vectorize(squared_error_loss)
+      train_mse = np.average(((y_train_pred - y_train)**2) * 0.5)
+      val_mse = np.average(((y_val_pred - y_val)**2) * 0.5)
+      #train_mse = 0.5 * mean_squared_error(y_train_pred, y_train)
+      #val_mse = 0.5 * mean_squared_error(y_val_pred, y_val)
+      train_losses.append(train_mse)
+      test_losses.append(val_mse) 
+    
+    return train_losses, test_losses
+
+def plotMany(n, x, y, taus):
+  for i in range(1,n):
+    train_losses, test_losses = run_validation2(x,y,taus,0.3, i)
+    
+    plt.semilogx(train_losses, linewidth=1, alpha=0.3, color='green')
+    plt.semilogx(test_losses, linewidth=1, alpha=0.3, color='red')
+
+  plt.show()
 
 def main():
   # In this excersice we fixed lambda (hard coded to 1e-5) and only set tau value. Feel free to play with lambda as well if you wish
 
     taus = np.logspace(1.0,3,200)
-
     start = time.time()
+    # taus = np.logspace(1.0,3,10)
+    # plotMany(5, x, y, taus)
+
+
+    
     train_losses, test_losses = run_validation(x,y,taus,frac_val=0.3)
     end = time.time()
-
     print("Done in {}".format(end - start))
     
     fig = plt.figure()
     plt.semilogx(taus, train_losses, label="Train losses", linewidth=1)
     plt.semilogx(taus, test_losses, label="Test losses", linewidth=1)
+    plt.legend()
     fig.suptitle('Train and test error as function of tau', fontsize=20)
     plt.xlabel('tau', fontsize=18)
     plt.ylabel('average squared error loss', fontsize=16)
     plt.axis([10, 1000, -10, 100])
-    plt.legend()
     plt.show()
 
 
