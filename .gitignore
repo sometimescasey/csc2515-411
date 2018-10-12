@@ -105,3 +105,7 @@ venv.bak/
 
 # user spec
 .idea/
+
+# files that don't need to be commited
+knn.py
+sandbox.py
